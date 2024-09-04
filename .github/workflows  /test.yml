@@ -4,9 +4,9 @@ name: zag
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "zag" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "zag" ]
 
 jobs:
   build:
