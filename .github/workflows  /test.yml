@@ -2,7 +2,6 @@
 name: zag
 
 on:
-on:
   push:
     branches:        
       - zag
