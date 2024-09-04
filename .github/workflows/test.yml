@@ -26,5 +26,5 @@ jobs:
 
     - name: Build
       run: >
-        CMAKE_GENERATOR=Ninja CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-musl generic
+        CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-musl generic
         ls -l
