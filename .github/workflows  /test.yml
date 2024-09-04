@@ -2,10 +2,10 @@
 name: zag
 
 on:
+on:
   push:
-    branches: [ "zag" ]
-  pull_request:
-    branches: [ "zag" ]
+    branches:        
+      - zag
 
 jobs:
   build:
