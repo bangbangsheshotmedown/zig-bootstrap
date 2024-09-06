@@ -39,5 +39,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: zag-release
-        path: out/host/
+        path: out/zig-x86_64-linux-gnu-baseline/
         compression-level: 6
