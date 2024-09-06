@@ -30,7 +30,7 @@ jobs:
 
     - name: Build
       run: >
-        CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-gnu generic && ls -l
+        CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-gnu baseline && ls -l
 
     - name: Zip artifact for deployment
       run: zip zag.zip ./out/host/ -r
