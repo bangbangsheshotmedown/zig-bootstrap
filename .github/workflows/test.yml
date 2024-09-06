@@ -26,7 +26,9 @@ jobs:
 
     - name: Fix Yo Shit Motherfuckers
       run: >
-        sudo apt install build-essential
+        sudo apt update
+        sudo apt install -y build-essential
+        sudo apt install -y g++ clang libc++-dev libc++abi-dev cmake ninja-build 
 
     - name: Build
       run: >
