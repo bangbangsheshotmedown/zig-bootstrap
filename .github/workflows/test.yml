@@ -31,3 +31,13 @@ jobs:
     - name: Build
       run: >
         CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-gnu generic && ls -l
+
+    - name: Zip artifact for deployment
+      run: zip zag.zip ./out/host/ -r
+
+    - name: Zip & Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: zag-release
+        path: out/host/
+        compression-level: 6
