@@ -30,7 +30,7 @@ jobs:
 
     - name: Build
       run: >
-        export CMAKE_GENERATOR=Ninja ./build x86_64-linux-gnu baseline
+        CMAKE_GENERATOR=Ninja ./build x86_64-linux-gnu baseline
 
     - name: Zip artifact for deployment
       run: zip zag.zip ./out/host/ -r
