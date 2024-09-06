@@ -26,11 +26,8 @@ jobs:
 
     - name: Fix Yo Shit Motherfuckers
       run: >
-        sudo apt update
-        sudo apt install -y build-essential
-        sudo apt install -y g++ clang libc++-dev libc++abi-dev cmake ninja-build 
+        sudo apt update && sudo apt install -y build-essential g++ clang libc++-dev libc++abi-dev cmake ninja-build 
 
     - name: Build
       run: >
-        CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-gnu generic
-        ls -l
+        CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) ./build x86_64-linux-gnu generic && ls -l
