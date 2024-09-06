@@ -3040,9 +3040,9 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
                         });
                     }
                     if (s.id_cat == .@"local variable" and !s.used_as_lvalue) {
-                        try astgen.appendErrorTokNotes(s.token_src, "local variable is never mutated", .{}, &.{
+                        // try astgen.appendErrorTokNotes(s.token_src, "local variable is never mutated", .{}, &.{
                             // try astgen.errNoteTok(s.token_src, "consider using 'const'", .{}),
-                        });
+                        // });
                     }
                 }
 
