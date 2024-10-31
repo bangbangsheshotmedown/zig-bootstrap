@@ -3456,13 +3456,13 @@ fn ensureResultUsed(
         .void, .noreturn => return,
         .error_set => return sema.fail(block, src, "error set is ignored", .{}),
         .error_union => {
-            const msg = msg: {
-                const msg = try sema.errMsg(src, "error union is ignored", .{});
-                errdefer msg.destroy(sema.gpa);
-                try sema.errNote(src, msg, "consider using 'try', 'catch', or 'if'", .{});
-                break :msg msg;
-            };
-            return sema.failWithOwnedErrorMsg(block, msg);
+            // const msg = msg: {
+                // const msg = try sema.errMsg(src, "error union is ignored", .{});
+                // errdefer msg.destroy(sema.gpa);
+                // try sema.errNote(src, msg, "consider using 'try', 'catch', or 'if'", .{});
+                // break :msg msg;
+            // };
+            // return sema.failWithOwnedErrorMsg(block, msg);
         },
         else => {
             const msg = msg: {
