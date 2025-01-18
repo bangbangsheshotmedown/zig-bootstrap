@@ -220,7 +220,7 @@ pub const CallingConvention = union(enum(u8)) {
     };
     /// Deprecated; use `.x86_thiscall`.
     pub const Thiscall: CallingConvention = .{ .x86_thiscall = .{} };
-    /// Deprecated; use `.arm_apcs`.
+    /// Deprecated; do not use.
     pub const APCS: CallingConvention = .{ .arm_apcs = .{} };
     /// Deprecated; use `.arm_aapcs`.
     pub const AAPCS: CallingConvention = .{ .arm_aapcs = .{} };
@@ -284,13 +284,14 @@ pub const CallingConvention = union(enum(u8)) {
     aarch64_vfabi_sve: CommonOptions,
 
     // Calling convetions for the `arm`, `armeb`, `thumb`, and `thumbeb` architectures.
-    /// ARM Procedure Call Standard (obsolete)
-    arm_apcs: CommonOptions,
+    /// Deprecated; do not use.
+    arm_apcs: CommonOptions, // Removal of `arm_apcs` is blocked by #21842.
     /// ARM Architecture Procedure Call Standard
     arm_aapcs: CommonOptions,
     /// ARM Architecture Procedure Call Standard Vector Floating-Point
     arm_aapcs_vfp: CommonOptions,
-    arm_aapcs16_vfp: CommonOptions,
+    /// Deprecated; do not use.
+    arm_aapcs16_vfp: CommonOptions, // Removal of `arm_aapcs16_vfp` is blocked by #21842.
     arm_interrupt: ArmInterruptOptions,
 
     // Calling conventions for the `mips64` and `mips64el` architectures.
@@ -606,16 +607,24 @@ pub const Type = union(enum) {
 
         /// The type of the sentinel is the element type of the pointer, which is
         /// the value of the `child` field in this struct. However there is no way
-        /// to refer to that type here, so we use pointer to `anyopaque`.
-        sentinel: ?*const anyopaque,
+        /// to refer to that type here, so we use `*const anyopaque`.
+        /// See also: `sentinel`
+        sentinel_ptr: ?*const anyopaque,
+
+        /// Loads the pointer type's sentinel value from `sentinel_ptr`.
+        /// Returns `null` if the pointer type has no sentinel.
+        pub inline fn sentinel(comptime ptr: Pointer) ?ptr.child {
+            const sp: *const ptr.child = @ptrCast(@alignCast(ptr.sentinel_ptr orelse return null));
+            return sp.*;
+        }
 
         /// This data structure is used by the Zig language code generation and
         /// therefore must be kept in sync with the compiler implementation.
         pub const Size = enum(u2) {
-            One,
-            Many,
-            Slice,
-            C,
+            one,
+            many,
+            slice,
+            c,
         };
     };
 
@@ -627,8 +636,16 @@ pub const Type = union(enum) {
 
         /// The type of the sentinel is the element type of the array, which is
         /// the value of the `child` field in this struct. However there is no way
-        /// to refer to that type here, so we use pointer to `anyopaque`.
-        sentinel: ?*const anyopaque,
+        /// to refer to that type here, so we use `*const anyopaque`.
+        /// See also: `sentinel`.
+        sentinel_ptr: ?*const anyopaque,
+
+        /// Loads the array type's sentinel value from `sentinel_ptr`.
+        /// Returns `null` if the array type has no sentinel.
+        pub inline fn sentinel(comptime arr: Array) ?arr.child {
+            const sp: *const arr.child = @ptrCast(@alignCast(arr.sentinel_ptr orelse return null));
+            return sp.*;
+        }
     };
 
     /// This data structure is used by the Zig language code generation and
@@ -644,9 +661,20 @@ pub const Type = union(enum) {
     pub const StructField = struct {
         name: [:0]const u8,
         type: type,
-        default_value: ?*const anyopaque,
+        /// The type of the default value is the type of this struct field, which
+        /// is the value of the `type` field in this struct. However there is no
+        /// way to refer to that type here, so we use `*const anyopaque`.
+        /// See also: `defaultValue`.
+        default_value_ptr: ?*const anyopaque,
         is_comptime: bool,
         alignment: comptime_int,
+
+        /// Loads the field's default value from `default_value_ptr`.
+        /// Returns `null` if the field has no default value.
+        pub inline fn defaultValue(comptime sf: StructField) ?sf.type {
+            const dp: *const sf.type = @ptrCast(@alignCast(sf.default_value_ptr orelse return null));
+            return dp.*;
+        }
     };
 
     /// This data structure is used by the Zig language code generation and
@@ -805,6 +833,14 @@ pub const LinkMode = enum {
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
+pub const UnwindTables = enum {
+    none,
+    sync,
+    @"async",
+};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
 pub const WasiExecModel = enum {
     command,
     reactor,
@@ -894,6 +930,14 @@ pub const VaListX86_64 = extern struct {
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
+pub const VaListXtensa = extern struct {
+    __va_stk: *c_int,
+    __va_reg: *c_int,
+    __va_ndx: c_int,
+};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
 pub const VaList = switch (builtin.cpu.arch) {
     .aarch64, .aarch64_be => switch (builtin.os.tag) {
         .windows => *u8,
@@ -925,6 +969,7 @@ pub const VaList = switch (builtin.cpu.arch) {
         .windows => @compileError("disabled due to miscompilations"), // *u8,
         else => VaListX86_64,
     },
+    .xtensa => VaListXtensa,
     else => @compileError("VaList not supported for this target yet"),
 };
 

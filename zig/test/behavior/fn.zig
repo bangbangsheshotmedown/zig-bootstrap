@@ -153,9 +153,9 @@ test "extern struct with stdcallcc fn pointer" {
     if (builtin.zig_backend == .stage2_spirv64) return error.SkipZigTest;
 
     const S = extern struct {
-        ptr: *const fn () callconv(if (builtin.target.cpu.arch == .x86) .Stdcall else .C) i32,
+        ptr: *const fn () callconv(if (builtin.target.cpu.arch == .x86) .Stdcall else .c) i32,
 
-        fn foo() callconv(if (builtin.target.cpu.arch == .x86) .Stdcall else .C) i32 {
+        fn foo() callconv(if (builtin.target.cpu.arch == .x86) .Stdcall else .c) i32 {
             return 1234;
         }
     };
@@ -169,7 +169,7 @@ const nComplexCallconv = 100;
 fn fComplexCallconvRet(x: u32) callconv(blk: {
     const s: struct { n: u32 } = .{ .n = nComplexCallconv };
     break :blk switch (s.n) {
-        0 => .C,
+        0 => .c,
         1 => .Inline,
         else => .Unspecified,
     };
@@ -435,13 +435,13 @@ test "implicit cast function to function ptr" {
             return 123;
         }
     };
-    var fnPtr1: *const fn () callconv(.C) c_int = S1.someFunctionThatReturnsAValue;
+    var fnPtr1: *const fn () callconv(.c) c_int = S1.someFunctionThatReturnsAValue;
     _ = &fnPtr1;
     try expect(fnPtr1() == 123);
     const S2 = struct {
         extern fn someFunctionThatReturnsAValue() c_int;
     };
-    var fnPtr2: *const fn () callconv(.C) c_int = S2.someFunctionThatReturnsAValue;
+    var fnPtr2: *const fn () callconv(.c) c_int = S2.someFunctionThatReturnsAValue;
     _ = &fnPtr2;
     try expect(fnPtr2() == 123);
 }
@@ -616,4 +616,59 @@ test "inline function with comptime-known comptime-only return type called at ru
     const T = S.foo(&a, &b);
     try expectEqual(111, a);
     try expectEqual(f32, T);
+}
+
+test "address of function parameter is consistent" {
+    const S = struct {
+        fn paramAddrMatch(x: u8) bool {
+            return &x == &x;
+        }
+    };
+    try expect(S.paramAddrMatch(0));
+    comptime assert(S.paramAddrMatch(0));
+}
+
+test "address of function parameter is consistent in other parameter type" {
+    const S = struct {
+        fn paramAddrMatch(comptime x: u8, y: if (&x != &x) unreachable else u8) void {
+            _ = y;
+        }
+    };
+    S.paramAddrMatch(1, 2);
+}
+
+test "address of function parameter is consistent in function return type" {
+    const S = struct {
+        fn paramAddrMatch(comptime x: u8) if (&x != &x) unreachable else void {}
+    };
+    S.paramAddrMatch(1);
+}
+
+test "function parameter self equality" {
+    const S = struct {
+        fn equal(x: u32) bool {
+            return x == x;
+        }
+        fn notEqual(x: u32) bool {
+            return x != x;
+        }
+        fn lessThan(x: u32) bool {
+            return x < x;
+        }
+        fn lessThanOrEqual(x: u32) bool {
+            return x <= x;
+        }
+        fn greaterThan(x: u32) bool {
+            return x > x;
+        }
+        fn greaterThanOrEqual(x: u32) bool {
+            return x >= x;
+        }
+    };
+    try expect(S.equal(42));
+    try expect(!S.notEqual(42));
+    try expect(!S.lessThan(42));
+    try expect(S.lessThanOrEqual(42));
+    try expect(!S.greaterThan(42));
+    try expect(S.greaterThanOrEqual(42));
 }

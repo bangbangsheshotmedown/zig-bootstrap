@@ -224,7 +224,6 @@ pub const Placeholder = struct {
     pub fn parse(comptime str: anytype) Placeholder {
         const view = std.unicode.Utf8View.initComptime(&str);
         comptime var parser = Parser{
-            .buf = &str,
             .iter = view.iterator(),
         };
 
@@ -311,10 +310,13 @@ pub const Specifier = union(enum) {
     named: []const u8,
 };
 
+/// A stream based parser for format strings.
+///
+/// Allows to implement formatters compatible with std.fmt without replicating
+/// the standard library behavior.
 pub const Parser = struct {
-    buf: []const u8,
     pos: usize = 0,
-    iter: std.unicode.Utf8Iterator = undefined,
+    iter: std.unicode.Utf8Iterator,
 
     // Returns a decimal number or null if the current character is not a
     // digit
@@ -432,7 +434,7 @@ pub fn formatAddress(value: anytype, options: FormatOptions, writer: anytype) @T
     switch (@typeInfo(T)) {
         .pointer => |info| {
             try writer.writeAll(@typeName(info.child) ++ "@");
-            if (info.size == .Slice)
+            if (info.size == .slice)
                 try formatInt(@intFromPtr(value.ptr), 16, .lower, FormatOptions{}, writer)
             else
                 try formatInt(@intFromPtr(value), 16, .lower, FormatOptions{}, writer);
@@ -458,12 +460,12 @@ pub fn defaultSpec(comptime T: type) [:0]const u8 {
     switch (@typeInfo(T)) {
         .array, .vector => return ANY,
         .pointer => |ptr_info| switch (ptr_info.size) {
-            .One => switch (@typeInfo(ptr_info.child)) {
+            .one => switch (@typeInfo(ptr_info.child)) {
                 .array => return ANY,
                 else => {},
             },
-            .Many, .C => return "*",
-            .Slice => return ANY,
+            .many, .c => return "*",
+            .slice => return ANY,
         },
         .optional => |info| return "?" ++ defaultSpec(info.child),
         .error_union => |info| return "!" ++ defaultSpec(info.payload),
@@ -622,16 +624,16 @@ pub fn formatType(
             try writer.writeAll(" }");
         },
         .pointer => |ptr_info| switch (ptr_info.size) {
-            .One => switch (@typeInfo(ptr_info.child)) {
+            .one => switch (@typeInfo(ptr_info.child)) {
                 .array, .@"enum", .@"union", .@"struct" => {
                     return formatType(value.*, actual_fmt, options, writer, max_depth);
                 },
                 else => return format(writer, "{s}@{x}", .{ @typeName(ptr_info.child), @intFromPtr(value) }),
             },
-            .Many, .C => {
+            .many, .c => {
                 if (actual_fmt.len == 0)
                     @compileError("cannot format pointer without a specifier (i.e. {s} or {*})");
-                if (ptr_info.sentinel) |_| {
+                if (ptr_info.sentinel() != null) {
                     return formatType(mem.span(value), actual_fmt, options, writer, max_depth);
                 }
                 if (actual_fmt[0] == 's' and ptr_info.child == u8) {
@@ -639,7 +641,7 @@ pub fn formatType(
                 }
                 invalidFmtError(fmt, value);
             },
-            .Slice => {
+            .slice => {
                 if (actual_fmt.len == 0)
                     @compileError("cannot format slice without a specifier (i.e. {s} or {any})");
                 if (max_depth == 0) {
@@ -2594,6 +2596,7 @@ test "positional/alignment/width/precision" {
 }
 
 test "vector" {
+    if ((builtin.cpu.arch == .armeb or builtin.cpu.arch == .thumbeb) and builtin.zig_backend == .stage2_llvm) return error.SkipZigTest; // https://github.com/ziglang/zig/issues/22060
     if (builtin.target.cpu.arch == .riscv64) {
         // https://github.com/ziglang/zig/issues/4486
         return error.SkipZigTest;

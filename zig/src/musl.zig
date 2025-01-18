@@ -138,17 +138,6 @@ pub fn buildCrtFile(comp: *Compilation, in_crt_file: CrtFile, prog_node: std.Pro
                 try addSrcFile(arena, &source_table, src_file);
             }
 
-            const time32_compat_arch_list = [_][]const u8{
-                "arm",
-                "i386",
-                "m68k",
-                "microblaze",
-                "mips",
-                "mipsn32",
-                "or1k",
-                "powerpc",
-                "sh",
-            };
             for (time32_compat_arch_list) |time32_compat_arch| {
                 if (mem.eql(u8, arch_name, time32_compat_arch)) {
                     for (compat_time32_files) |compat_time32_file| {
@@ -239,13 +228,29 @@ pub fn buildCrtFile(comp: *Compilation, in_crt_file: CrtFile, prog_node: std.Pro
             });
 
             const target = comp.root_mod.resolved_target.result;
-            const arch_define = try std.fmt.allocPrint(arena, "-DARCH_{s}", .{
-                @tagName(target.cpu.arch),
-            });
+            const arch_name = std.zig.target.muslArchName(target.cpu.arch, target.abi);
+            const time32 = for (time32_compat_arch_list) |time32_compat_arch| {
+                if (mem.eql(u8, arch_name, time32_compat_arch)) break true;
+            } else false;
+            const arch_define = try std.fmt.allocPrint(arena, "-DARCH_{s}", .{arch_name});
+            const family_define = switch (target.cpu.arch) {
+                .arm, .armeb, .thumb, .thumbeb => "-DFAMILY_arm",
+                .aarch64, .aarch64_be => "-DFAMILY_aarch64",
+                .loongarch64 => "-DFAMILY_loongarch",
+                .m68k => "-DFAMILY_m68k",
+                .mips, .mipsel, .mips64, .mips64el => "-DFAMILY_mips",
+                .powerpc, .powerpc64, .powerpc64le => "-DFAMILY_powerpc",
+                .riscv32, .riscv64 => "-DFAMILY_riscv",
+                .s390x => "-DFAMILY_s390x",
+                .x86, .x86_64 => "-DFAMILY_x86",
+                else => unreachable,
+            };
             const cc_argv: []const []const u8 = if (target.ptrBitWidth() == 64)
-                &.{ "-DPTR64", arch_define }
+                &.{ "-DPTR64", arch_define, family_define }
+            else if (time32)
+                &.{ "-DTIME32", arch_define, family_define }
             else
-                &.{arch_define};
+                &.{ arch_define, family_define };
 
             const root_mod = try Module.create(arena, .{
                 .global_cache_directory = comp.global_cache_directory,
@@ -346,6 +351,18 @@ pub fn needsCrt0(output_mode: std.builtin.OutputMode, link_mode: std.builtin.Lin
         },
     };
 }
+
+const time32_compat_arch_list = [_][]const u8{
+    "arm",
+    "i386",
+    "m68k",
+    "microblaze",
+    "mips",
+    "mipsn32",
+    "or1k",
+    "powerpc",
+    "sh",
+};
 
 fn isArchName(name: []const u8) bool {
     const musl_arch_names = [_][]const u8{
@@ -1882,25 +1899,18 @@ const src_files = [_][]const u8{
     "musl/src/stdlib/strtol.c",
     "musl/src/stdlib/wcstod.c",
     "musl/src/stdlib/wcstol.c",
-    "musl/src/string/aarch64/memcpy.S",
     "musl/src/string/aarch64/memset.S",
-    "musl/src/string/arm/__aeabi_memcpy.s",
     "musl/src/string/arm/__aeabi_memset.s",
-    "musl/src/string/arm/memcpy.S",
     "musl/src/string/bcmp.c",
     "musl/src/string/bcopy.c",
     "musl/src/string/bzero.c",
     "musl/src/string/explicit_bzero.c",
-    "musl/src/string/i386/memcpy.s",
-    "musl/src/string/i386/memmove.s",
     "musl/src/string/i386/memset.s",
     "musl/src/string/index.c",
     "musl/src/string/memccpy.c",
     "musl/src/string/memchr.c",
     "musl/src/string/memcmp.c",
-    "musl/src/string/memcpy.c",
     "musl/src/string/memmem.c",
-    "musl/src/string/memmove.c",
     "musl/src/string/mempcpy.c",
     "musl/src/string/memrchr.c",
     "musl/src/string/memset.c",
@@ -1964,8 +1974,6 @@ const src_files = [_][]const u8{
     "musl/src/string/wmemcpy.c",
     "musl/src/string/wmemmove.c",
     "musl/src/string/wmemset.c",
-    "musl/src/string/x86_64/memcpy.s",
-    "musl/src/string/x86_64/memmove.s",
     "musl/src/string/x86_64/memset.s",
     "musl/src/temp/mkdtemp.c",
     "musl/src/temp/mkostemp.c",

@@ -379,7 +379,7 @@ pub const MACH_MSG_TYPE = enum(mach_msg_type_name_t) {
 };
 
 extern "c" var mach_task_self_: mach_port_t;
-pub fn mach_task_self() callconv(.C) mach_port_t {
+pub fn mach_task_self() callconv(.c) mach_port_t {
     return mach_task_self_;
 }
 
@@ -873,7 +873,7 @@ pub const DISPATCH_TIME_FOREVER = ~@as(dispatch_time_t, 0);
 pub extern "c" fn dispatch_time(when: dispatch_time_t, delta: i64) dispatch_time_t;
 
 const dispatch_once_t = usize;
-const dispatch_function_t = fn (?*anyopaque) callconv(.C) void;
+const dispatch_function_t = fn (?*anyopaque) callconv(.c) void;
 pub extern fn dispatch_once_f(
     predicate: *dispatch_once_t,
     context: ?*anyopaque,
@@ -928,7 +928,7 @@ pub const OS_SIGNPOST_ID_NULL: os_signpost_id_t = 0;
 pub const OS_SIGNPOST_ID_INVALID: os_signpost_id_t = !0;
 pub const OS_SIGNPOST_ID_EXCLUSIVE: os_signpost_id_t = 0xeeeeb0b5b2b2eeee;
 
-pub const os_log_t = opaque {};
+pub const os_log_t = *opaque {};
 pub const os_log_type_t = enum(u8) {
     /// default messages always captures
     OS_LOG_TYPE_DEFAULT = 0x00,
@@ -1164,6 +1164,7 @@ pub const CPUFAMILY = enum(u32) {
     ARM_LOBOS = 0x5f4dea93,
     ARM_PALMA = 0x72015832,
     ARM_DONAN = 0x6f5129ac,
+    ARM_BRAVA = 0x17d5b93a,
     _,
 };
 
@@ -1232,16 +1233,16 @@ pub extern "c" fn posix_spawn(
     path: [*:0]const u8,
     actions: ?*const posix_spawn_file_actions_t,
     attr: ?*const posix_spawnattr_t,
-    argv: [*:null]?[*:0]const u8,
-    env: [*:null]?[*:0]const u8,
+    argv: [*:null]const ?[*:0]const u8,
+    env: [*:null]const ?[*:0]const u8,
 ) c_int;
 pub extern "c" fn posix_spawnp(
     pid: *pid_t,
     path: [*:0]const u8,
     actions: ?*const posix_spawn_file_actions_t,
     attr: ?*const posix_spawnattr_t,
-    argv: [*:null]?[*:0]const u8,
-    env: [*:null]?[*:0]const u8,
+    argv: [*:null]const ?[*:0]const u8,
+    env: [*:null]const ?[*:0]const u8,
 ) c_int;
 
 pub const E = enum(u16) {

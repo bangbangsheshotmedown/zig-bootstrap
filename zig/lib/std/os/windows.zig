@@ -132,6 +132,7 @@ pub fn OpenFile(sub_path_w: []const u16, options: OpenFileOptions) OpenError!HAN
             .SHARING_VIOLATION => return error.AccessDenied,
             .ACCESS_DENIED => return error.AccessDenied,
             .PIPE_BUSY => return error.PipeBusy,
+            .PIPE_NOT_AVAILABLE => return error.NoDevice,
             .OBJECT_PATH_SYNTAX_BAD => unreachable,
             .OBJECT_NAME_COLLISION => return error.PathAlreadyExists,
             .FILE_IS_A_DIRECTORY => return error.IsDir,
@@ -801,6 +802,7 @@ pub fn CreateSymbolicLink(
         error.NotDir => return error.Unexpected,
         error.WouldBlock => return error.Unexpected,
         error.PipeBusy => return error.Unexpected,
+        error.NoDevice => return error.Unexpected,
         error.AntivirusInterference => return error.Unexpected,
         else => |e| return e,
     };
@@ -1059,7 +1061,7 @@ pub fn DeleteFile(sub_path_w: []const u16, options: DeleteFileOptions) DeleteFil
     // us INVALID_PARAMETER.
     // The same reasoning for win10_rs5 as in os.renameatW() applies (FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE requires >= win10_rs5).
     var need_fallback = true;
-    if (comptime builtin.target.os.version_range.windows.min.isAtLeast(.win10_rs5)) {
+    if (builtin.target.os.version_range.windows.min.isAtLeast(.win10_rs5)) {
         // Deletion with posix semantics if the filesystem supports it.
         var info = FILE_DISPOSITION_INFORMATION_EX{
             .Flags = FILE_DISPOSITION_DELETE |
@@ -1466,6 +1468,7 @@ fn mountmgrIsVolumeName(name: []const u16) bool {
 }
 
 test mountmgrIsVolumeName {
+    @setEvalBranchQuota(2000);
     const L = std.unicode.utf8ToUtf16LeStringLiteral;
     try std.testing.expect(mountmgrIsVolumeName(L("\\\\?\\Volume{383da0b0-717f-41b6-8c36-00500992b58d}")));
     try std.testing.expect(mountmgrIsVolumeName(L("\\??\\Volume{383da0b0-717f-41b6-8c36-00500992b58d}")));

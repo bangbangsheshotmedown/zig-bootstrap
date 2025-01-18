@@ -38,7 +38,6 @@ pub const Os = struct {
         netbsd,
         openbsd,
 
-        bridgeos,
         driverkit,
         ios,
         macos,
@@ -69,6 +68,7 @@ pub const Os = struct {
         vulkan,
 
         // LLVM tags deliberately omitted:
+        // - bridgeos
         // - darwin
         // - kfreebsd
         // - nacl
@@ -76,7 +76,6 @@ pub const Os = struct {
 
         pub inline fn isDarwin(tag: Tag) bool {
             return switch (tag) {
-                .bridgeos,
                 .driverkit,
                 .ios,
                 .macos,
@@ -124,7 +123,6 @@ pub const Os = struct {
         pub fn dynamicLibSuffix(tag: Tag) [:0]const u8 {
             return switch (tag) {
                 .windows, .uefi => ".dll",
-                .bridgeos,
                 .driverkit,
                 .ios,
                 .macos,
@@ -150,10 +148,10 @@ pub const Os = struct {
             return (tag == .hurd or tag == .linux) and abi.isGnu();
         }
 
-        pub fn defaultVersionRange(tag: Tag, arch: Cpu.Arch) Os {
+        pub fn defaultVersionRange(tag: Tag, arch: Cpu.Arch, abi: Abi) Os {
             return .{
                 .tag = tag,
-                .version_range = VersionRange.default(tag, arch),
+                .version_range = .default(arch, tag, abi),
             };
         }
 
@@ -167,9 +165,6 @@ pub const Os = struct {
                 .haiku,
                 .plan9,
                 .serenity,
-
-                // This should use semver once we determine the version history.
-                .bridgeos,
 
                 .illumos,
 
@@ -187,7 +182,6 @@ pub const Os = struct {
                 .hermit,
 
                 .aix,
-                .hurd,
                 .rtems,
                 .zos,
 
@@ -218,6 +212,7 @@ pub const Os = struct {
                 .vulkan,
                 => .semver,
 
+                .hurd => .hurd,
                 .linux => .linux,
 
                 .windows => .windows,
@@ -356,6 +351,21 @@ pub const Os = struct {
         }
     };
 
+    pub const HurdVersionRange = struct {
+        range: std.SemanticVersion.Range,
+        glibc: std.SemanticVersion,
+
+        pub inline fn includesVersion(range: HurdVersionRange, ver: std.SemanticVersion) bool {
+            return range.range.includesVersion(ver);
+        }
+
+        /// Checks if system is guaranteed to be at least `version` or older than `version`.
+        /// Returns `null` if a runtime check is required.
+        pub inline fn isAtLeast(range: HurdVersionRange, ver: std.SemanticVersion) ?bool {
+            return range.range.isAtLeast(ver);
+        }
+    };
+
     pub const LinuxVersionRange = struct {
         range: std.SemanticVersion.Range,
         glibc: std.SemanticVersion,
@@ -400,12 +410,13 @@ pub const Os = struct {
     pub const VersionRange = union {
         none: void,
         semver: std.SemanticVersion.Range,
+        hurd: HurdVersionRange,
         linux: LinuxVersionRange,
         windows: WindowsVersion.Range,
 
         /// The default `VersionRange` represents the range that the Zig Standard Library
         /// bases its abstractions on.
-        pub fn default(tag: Tag, arch: Cpu.Arch) VersionRange {
+        pub fn default(arch: Cpu.Arch, tag: Tag, abi: Abi) VersionRange {
             return switch (tag) {
                 .freestanding,
                 .other,
@@ -415,9 +426,6 @@ pub const Os = struct {
                 .haiku,
                 .plan9,
                 .serenity,
-
-                // This should use semver once we determine the version history.
-                .bridgeos,
 
                 .illumos,
 
@@ -456,24 +464,37 @@ pub const Os = struct {
                     },
                 },
                 .hurd => .{
-                    .semver = .{
-                        .min = .{ .major = 0, .minor = 9, .patch = 0 },
-                        .max = .{ .major = 0, .minor = 9, .patch = 0 },
+                    .hurd = .{
+                        .range = .{
+                            .min = .{ .major = 0, .minor = 9, .patch = 0 },
+                            .max = .{ .major = 0, .minor = 9, .patch = 0 },
+                        },
+                        .glibc = .{ .major = 2, .minor = 28, .patch = 0 },
                     },
                 },
                 .linux => .{
                     .linux = .{
                         .range = .{
-                            .min = .{ .major = 4, .minor = 19, .patch = 0 },
+                            .min = blk: {
+                                const default_min: std.SemanticVersion = .{ .major = 4, .minor = 19, .patch = 0 };
+
+                                for (std.zig.target.available_libcs) |libc| {
+                                    if (libc.arch != arch or libc.os != tag or libc.abi != abi) continue;
+
+                                    if (libc.os_ver) |min| {
+                                        if (min.order(default_min) == .gt) break :blk min;
+                                    }
+                                }
+
+                                break :blk default_min;
+                            },
                             .max = .{ .major = 6, .minor = 11, .patch = 5 },
                         },
                         .glibc = blk: {
                             const default_min: std.SemanticVersion = .{ .major = 2, .minor = 28, .patch = 0 };
 
                             for (std.zig.target.available_libcs) |libc| {
-                                // We don't know the ABI here. We can get away with not checking it
-                                // for now, but that may not always remain true.
-                                if (libc.os != tag or libc.arch != arch) continue;
+                                if (libc.os != tag or libc.arch != arch or libc.abi != abi) continue;
 
                                 if (libc.glibc_min) |min| {
                                     if (min.order(default_min) == .gt) break :blk min;
@@ -531,7 +552,7 @@ pub const Os = struct {
                 },
                 .macos => .{
                     .semver = .{
-                        .min = .{ .major = 11, .minor = 7, .patch = 1 },
+                        .min = .{ .major = 13, .minor = 0, .patch = 0 },
                         .max = .{ .major = 15, .minor = 2, .patch = 0 },
                     },
                 },
@@ -632,8 +653,17 @@ pub const Os = struct {
     pub const TaggedVersionRange = union(enum) {
         none: void,
         semver: std.SemanticVersion.Range,
+        hurd: HurdVersionRange,
         linux: LinuxVersionRange,
         windows: WindowsVersion.Range,
+
+        pub fn gnuLibCVersion(range: TaggedVersionRange) ?std.SemanticVersion {
+            return switch (range) {
+                .none, .semver, .windows => null,
+                .hurd => |h| h.glibc,
+                .linux => |l| l.glibc,
+            };
+        }
     };
 
     /// Provides a tagged union. `Target` does not store the tag because it is
@@ -642,6 +672,7 @@ pub const Os = struct {
         return switch (os.tag.versionRangeTag()) {
             .none => .{ .none = {} },
             .semver => .{ .semver = os.version_range.semver },
+            .hurd => .{ .hurd = os.version_range.hurd },
             .linux => .{ .linux = os.version_range.linux },
             .windows => .{ .windows = os.version_range.windows },
         };
@@ -651,12 +682,13 @@ pub const Os = struct {
     /// Returns `null` if a runtime check is required.
     pub inline fn isAtLeast(os: Os, comptime tag: Tag, ver: switch (tag.versionRangeTag()) {
         .none => void,
-        .semver, .linux => std.SemanticVersion,
+        .semver, .hurd, .linux => std.SemanticVersion,
         .windows => WindowsVersion,
     }) ?bool {
         return if (os.tag != tag) false else switch (tag.versionRangeTag()) {
             .none => true,
             inline .semver,
+            .hurd,
             .linux,
             .windows,
             => |field| @field(os.version_range, @tagName(field)).isAtLeast(ver),
@@ -671,7 +703,6 @@ pub const Os = struct {
             .freebsd,
             .aix,
             .netbsd,
-            .bridgeos,
             .driverkit,
             .macos,
             .ios,
@@ -794,7 +825,7 @@ pub const Abi = enum {
     // - vertex
 
     pub fn default(arch: Cpu.Arch, os: Os) Abi {
-        return if (arch.isWasm()) .musl else switch (os.tag) {
+        return switch (os.tag) {
             .freestanding, .other => switch (arch) {
                 // Soft float is usually a sane default for freestanding.
                 .arm,
@@ -832,6 +863,9 @@ pub const Abi = enum {
                 .mips,
                 .mipsel,
                 => .musleabi,
+                .mips64,
+                .mips64el,
+                => .muslabi64,
                 else => .musl,
             },
             .rtems => switch (arch) {
@@ -894,7 +928,6 @@ pub const Abi = enum {
             .serenity,
             .zos,
             .dragonfly,
-            .bridgeos,
             .driverkit,
             .macos,
             .illumos,
@@ -1016,7 +1049,7 @@ pub const ObjectFormat = enum {
     pub fn default(os_tag: Os.Tag, arch: Cpu.Arch) ObjectFormat {
         return switch (os_tag) {
             .aix => .xcoff,
-            .bridgeos, .driverkit, .ios, .macos, .tvos, .visionos, .watchos => .macho,
+            .driverkit, .ios, .macos, .tvos, .visionos, .watchos => .macho,
             .plan9 => .plan9,
             .uefi, .windows => .coff,
             .zos => .goff,
@@ -1184,6 +1217,12 @@ pub const Cpu = struct {
                 return for (set.ints) |x| {
                     if (x != 0) break false;
                 } else true;
+            }
+
+            pub fn count(set: Set) std.math.IntFittingRange(0, needed_bit_count) {
+                var sum: usize = 0;
+                for (set.ints) |x| sum += @popCount(x);
+                return @intCast(sum);
             }
 
             pub fn isEnabled(set: Set, arch_feature_index: Index) bool {
@@ -1942,7 +1981,7 @@ pub const Cpu = struct {
                 .amdgcn => &amdgcn.cpu.gfx906,
                 .arm, .armeb, .thumb, .thumbeb => &arm.cpu.baseline,
                 .aarch64 => switch (os.tag) {
-                    .bridgeos, .driverkit, .macos => &aarch64.cpu.apple_m1,
+                    .driverkit, .macos => &aarch64.cpu.apple_m1,
                     .ios, .tvos => &aarch64.cpu.apple_a7,
                     .visionos => &aarch64.cpu.apple_m2,
                     .watchos => &aarch64.cpu.apple_s4,
@@ -1988,6 +2027,14 @@ pub const Cpu = struct {
 
 pub fn zigTriple(target: Target, allocator: Allocator) Allocator.Error![]u8 {
     return Query.fromTarget(target).zigTriple(allocator);
+}
+
+pub fn hurdTupleSimple(allocator: Allocator, arch: Cpu.Arch, abi: Abi) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}-{s}", .{ @tagName(arch), @tagName(abi) });
+}
+
+pub fn hurdTuple(target: Target, allocator: Allocator) ![]u8 {
+    return hurdTupleSimple(allocator, target.cpu.arch, target.abi);
 }
 
 pub fn linuxTripleSimple(allocator: Allocator, arch: Cpu.Arch, os_tag: Os.Tag, abi: Abi) ![]u8 {
@@ -2126,7 +2173,6 @@ pub const DynamicLinker = struct {
             .netbsd,
             .openbsd,
 
-            .bridgeos,
             .driverkit,
             .ios,
             .macos,
@@ -2329,7 +2375,6 @@ pub const DynamicLinker = struct {
                     // TODO: `700` ABI support.
                     .arc => if (abi == .gnu) init("/lib/ld-linux-arc.so.2") else none,
 
-                    // TODO: OABI support (`/lib/ld-linux.so.2`).
                     .arm,
                     .armeb,
                     .thumb,
@@ -2513,7 +2558,6 @@ pub const DynamicLinker = struct {
                 else => none,
             },
 
-            .bridgeos => if (cpu.arch == .aarch64) init("/usr/lib/dyld") else none,
             .driverkit,
             .ios,
             .macos,
@@ -2655,6 +2699,10 @@ pub fn stackAlignment(target: Target) u16 {
         => return 2,
         .amdgcn,
         => return 4,
+        .arm,
+        .armeb,
+        .thumb,
+        .thumbeb,
         .lanai,
         .mips,
         .mipsel,
@@ -2673,17 +2721,8 @@ pub fn stackAlignment(target: Target) u16 {
         .wasm32,
         .wasm64,
         => return 16,
-        // Some of the following prongs should really be testing the ABI (e.g. for Arm, it's APCS vs
-        // AAPCS16 vs AAPCS). But our current Abi enum is not able to handle that level of nuance.
-        .arm,
-        .armeb,
-        .thumb,
-        .thumbeb,
-        => switch (target.os.tag) {
-            .netbsd => {},
-            .watchos => return 16,
-            else => return 8,
-        },
+        // Some of the following prongs should really be testing the ABI, but our current `Abi` enum
+        // can't handle that level of nuance yet.
         .powerpc64,
         .powerpc64le,
         => if (target.os.tag == .linux or target.os.tag == .aix) return 16,
@@ -2713,6 +2752,7 @@ pub fn charSignedness(target: Target) std.builtin.Signedness {
         .aarch64_be,
         .arc,
         .csky,
+        .hexagon,
         .msp430,
         .powerpc,
         .powerpcle,
@@ -2851,19 +2891,29 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
             },
         },
 
+        .elfiamcu,
+        .fuchsia,
+        .hermit,
+
+        .aix,
+        .haiku,
+        .hurd,
         .linux,
+        .plan9,
+        .rtems,
+        .serenity,
+        .zos,
+
         .freebsd,
-        .netbsd,
         .dragonfly,
+        .netbsd,
         .openbsd,
+
+        .illumos,
+        .solaris,
+
         .wasi,
         .emscripten,
-        .plan9,
-        .solaris,
-        .illumos,
-        .haiku,
-        .fuchsia,
-        .serenity,
         => switch (target.cpu.arch) {
             .msp430 => switch (c_type) {
                 .char => return 8,
@@ -2908,7 +2958,10 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
                 .longdouble => switch (target.cpu.arch) {
                     .x86 => switch (target.abi) {
                         .android => return 64,
-                        else => return 80,
+                        else => switch (target.os.tag) {
+                            .elfiamcu => return 64,
+                            else => return 80,
+                        },
                     },
 
                     .powerpc,
@@ -2922,7 +2975,7 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
                         .muslx32,
                         => return 64,
                         else => switch (target.os.tag) {
-                            .freebsd, .netbsd, .openbsd => return 64,
+                            .aix, .freebsd, .netbsd, .openbsd => return 64,
                             else => return 128,
                         },
                     },
@@ -2938,7 +2991,7 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
                         .muslx32,
                         => return 64,
                         else => switch (target.os.tag) {
-                            .freebsd, .openbsd => return 64,
+                            .aix, .freebsd, .openbsd => return 64,
                             else => return 128,
                         },
                     },
@@ -2999,7 +3052,6 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
             },
         },
 
-        .bridgeos,
         .driverkit,
         .ios,
         .macos,
@@ -3011,19 +3063,14 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
             .short, .ushort => return 16,
             .int, .uint, .float => return 32,
             .long, .ulong => switch (target.cpu.arch) {
-                .x86, .arm => return 32,
-                .x86_64 => switch (target.abi) {
-                    .gnux32, .muslx32 => return 32,
+                .x86_64 => return 64,
+                else => switch (target.abi) {
+                    .ilp32 => return 32,
                     else => return 64,
                 },
-                else => return 64,
             },
             .longlong, .ulonglong, .double => return 64,
             .longdouble => switch (target.cpu.arch) {
-                .x86 => switch (target.abi) {
-                    .android => return 64,
-                    else => return 80,
-                },
                 .x86_64 => return 80,
                 else => return 64,
             },
@@ -3071,15 +3118,9 @@ pub fn cTypeBitSize(target: Target, c_type: CType) u16 {
         },
 
         .ps3,
-        .zos,
-        .rtems,
-        .aix,
-        .elfiamcu,
         .contiki,
-        .hermit,
-        .hurd,
         .opengl,
-        => @panic("TODO specify the C integer and float type sizes for this OS"),
+        => @panic("specify the C integer and float type sizes for this OS"),
     }
 }
 
@@ -3088,12 +3129,30 @@ pub fn cTypeAlignment(target: Target, c_type: CType) u16 {
     switch (target.cpu.arch) {
         .avr => return 1,
         .x86 => switch (target.os.tag) {
+            .elfiamcu => switch (c_type) {
+                .longlong, .ulonglong, .double => return 4,
+                else => {},
+            },
             .windows, .uefi => switch (c_type) {
                 .longlong, .ulonglong, .double => return 8,
                 .longdouble => switch (target.abi) {
                     .gnu, .gnuilp32, .ilp32, .cygnus => return 4,
                     else => return 8,
                 },
+                else => {},
+            },
+            else => {},
+        },
+        .powerpc, .powerpcle, .powerpc64, .powerpc64le => switch (target.os.tag) {
+            .aix => switch (c_type) {
+                .double, .longdouble => return 4,
+                else => {},
+            },
+            else => {},
+        },
+        .wasm32, .wasm64 => switch (target.os.tag) {
+            .emscripten => switch (c_type) {
+                .longdouble => return 8,
                 else => {},
             },
             else => {},
@@ -3105,24 +3164,6 @@ pub fn cTypeAlignment(target: Target, c_type: CType) u16 {
     return @min(
         std.math.ceilPowerOfTwoAssert(u16, (cTypeBitSize(target, c_type) + 7) / 8),
         @as(u16, switch (target.cpu.arch) {
-            .arm, .armeb, .thumb, .thumbeb => switch (target.os.tag) {
-                .netbsd => switch (target.abi) {
-                    .gnueabi,
-                    .gnueabihf,
-                    .eabi,
-                    .eabihf,
-                    .android,
-                    .androideabi,
-                    .musleabi,
-                    .musleabihf,
-                    => 8,
-
-                    else => 4,
-                },
-                .ios, .tvos, .watchos, .visionos => 4,
-                else => 8,
-            },
-
             .msp430,
             => 2,
 
@@ -3137,6 +3178,10 @@ pub fn cTypeAlignment(target: Target, c_type: CType) u16 {
             .propeller2,
             => 4,
 
+            .arm,
+            .armeb,
+            .thumb,
+            .thumbeb,
             .amdgcn,
             .bpfel,
             .bpfeb,
@@ -3182,35 +3227,16 @@ pub fn cTypeAlignment(target: Target, c_type: CType) u16 {
 pub fn cTypePreferredAlignment(target: Target, c_type: CType) u16 {
     // Overrides for unusual alignments
     switch (target.cpu.arch) {
-        .arm, .armeb, .thumb, .thumbeb => switch (target.os.tag) {
-            .netbsd => switch (target.abi) {
-                .gnueabi,
-                .gnueabihf,
-                .eabi,
-                .eabihf,
-                .android,
-                .androideabi,
-                .musleabi,
-                .musleabihf,
-                => {},
-
-                else => switch (c_type) {
-                    .longdouble => return 4,
-                    else => {},
-                },
-            },
-            .ios, .tvos, .watchos, .visionos => switch (c_type) {
-                .longdouble => return 4,
-                else => {},
-            },
-            else => {},
-        },
         .arc => switch (c_type) {
             .longdouble => return 4,
             else => {},
         },
         .avr => return 1,
         .x86 => switch (target.os.tag) {
+            .elfiamcu => switch (c_type) {
+                .longlong, .ulonglong, .double, .longdouble => return 4,
+                else => {},
+            },
             .windows, .uefi => switch (c_type) {
                 .longdouble => switch (target.abi) {
                     .gnu, .gnuilp32, .ilp32, .cygnus => return 4,
@@ -3222,6 +3248,13 @@ pub fn cTypePreferredAlignment(target: Target, c_type: CType) u16 {
                 .longdouble => return 4,
                 else => {},
             },
+        },
+        .wasm32, .wasm64 => switch (target.os.tag) {
+            .emscripten => switch (c_type) {
+                .longdouble => return 8,
+                else => {},
+            },
+            else => {},
         },
         else => {},
     }
@@ -3305,13 +3338,9 @@ pub fn cCallingConvention(target: Target) ?std.builtin.CallingConvention {
             .windows => .{ .aarch64_aapcs_win = .{} },
             else => .{ .aarch64_aapcs = .{} },
         },
-        .arm, .armeb, .thumb, .thumbeb => switch (target.os.tag) {
-            .netbsd => .{ .arm_apcs = .{} },
-            .watchos => .{ .arm_aapcs16_vfp = .{} },
-            else => switch (target.abi.floatAbi()) {
-                .soft => .{ .arm_aapcs = .{} },
-                .hard => .{ .arm_aapcs_vfp = .{} },
-            },
+        .arm, .armeb, .thumb, .thumbeb => switch (target.abi.floatAbi()) {
+            .soft => .{ .arm_aapcs = .{} },
+            .hard => .{ .arm_aapcs_vfp = .{} },
         },
         .mips64, .mips64el => switch (target.abi) {
             .gnuabin32 => .{ .mips64_n32 = .{} },

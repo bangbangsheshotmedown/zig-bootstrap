@@ -167,7 +167,6 @@ pub fn targetTriple(allocator: Allocator, target: std.Target) ![]const u8 {
         .aix,
         .zos,
         => "ibm",
-        .bridgeos,
         .driverkit,
         .ios,
         .macos,
@@ -218,7 +217,6 @@ pub fn targetTriple(allocator: Allocator, target: std.Target) ![]const u8 {
         .hurd => "hurd",
         .wasi => "wasi",
         .emscripten => "emscripten",
-        .bridgeos => "bridgeos",
         .macos => "macosx",
         .ios => "ios",
         .tvos => "tvos",
@@ -245,7 +243,7 @@ pub fn targetTriple(allocator: Allocator, target: std.Target) ![]const u8 {
             ver.min.minor,
             ver.min.patch,
         }),
-        .linux => |ver| try llvm_triple.writer().print("{d}.{d}.{d}", .{
+        inline .linux, .hurd => |ver| try llvm_triple.writer().print("{d}.{d}.{d}", .{
             ver.range.min.major,
             ver.range.min.minor,
             ver.range.min.patch,
@@ -280,8 +278,7 @@ pub fn targetTriple(allocator: Allocator, target: std.Target) ![]const u8 {
         .cygnus => "cygnus",
         .simulator => "simulator",
         .macabi => "macabi",
-        .ohos => "ohos",
-        .ohoseabi => "ohoseabi",
+        .ohos, .ohoseabi => "ohos",
     };
     try llvm_triple.appendSlice(llvm_abi);
 
@@ -290,111 +287,18 @@ pub fn targetTriple(allocator: Allocator, target: std.Target) ![]const u8 {
         .semver,
         .windows,
         => {},
-        .linux => |ver| if (target.abi.isGnu()) try llvm_triple.writer().print("{d}.{d}.{d}", .{
-            ver.glibc.major,
-            ver.glibc.minor,
-            ver.glibc.patch,
-        }) else if (target.abi.isAndroid()) try llvm_triple.writer().print("{d}", .{ver.android}),
+        inline .hurd, .linux => |ver| if (target.abi.isGnu()) {
+            try llvm_triple.writer().print("{d}.{d}.{d}", .{
+                ver.glibc.major,
+                ver.glibc.minor,
+                ver.glibc.patch,
+            });
+        } else if (@TypeOf(ver) == std.Target.Os.LinuxVersionRange and target.abi.isAndroid()) {
+            try llvm_triple.writer().print("{d}", .{ver.android});
+        },
     }
 
     return llvm_triple.toOwnedSlice();
-}
-
-pub fn targetOs(os_tag: std.Target.Os.Tag) llvm.OSType {
-    return switch (os_tag) {
-        .freestanding => .UnknownOS,
-        .windows, .uefi => .Win32,
-        .dragonfly => .DragonFly,
-        .freebsd => .FreeBSD,
-        .fuchsia => .Fuchsia,
-        .ios => .IOS,
-        .linux => .Linux,
-        .ps3 => .Lv2,
-        .macos => .MacOSX,
-        .netbsd => .NetBSD,
-        .openbsd => .OpenBSD,
-        .solaris, .illumos => .Solaris,
-        .zos => .ZOS,
-        .haiku => .Haiku,
-        .rtems => .RTEMS,
-        .aix => .AIX,
-        .cuda => .CUDA,
-        .nvcl => .NVCL,
-        .amdhsa => .AMDHSA,
-        .opencl => .UnknownOS, // https://llvm.org/docs/SPIRVUsage.html#target-triples
-        .ps4 => .PS4,
-        .ps5 => .PS5,
-        .elfiamcu => .ELFIAMCU,
-        .tvos => .TvOS,
-        .watchos => .WatchOS,
-        .visionos => .XROS,
-        .mesa3d => .Mesa3D,
-        .amdpal => .AMDPAL,
-        .hermit => .HermitCore,
-        .hurd => .Hurd,
-        .wasi => .WASI,
-        .emscripten => .Emscripten,
-        .driverkit => .DriverKit,
-        .vulkan => .Vulkan,
-        .serenity => .Serenity,
-        .bridgeos => .BridgeOS,
-
-        .opengl,
-        .plan9,
-        .contiki,
-        .other,
-        => .UnknownOS,
-    };
-}
-
-pub fn targetArch(arch_tag: std.Target.Cpu.Arch) llvm.ArchType {
-    return switch (arch_tag) {
-        .arm => .arm,
-        .armeb => .armeb,
-        .aarch64 => .aarch64,
-        .aarch64_be => .aarch64_be,
-        .arc => .arc,
-        .avr => .avr,
-        .bpfel => .bpfel,
-        .bpfeb => .bpfeb,
-        .csky => .csky,
-        .hexagon => .hexagon,
-        .loongarch32 => .loongarch32,
-        .loongarch64 => .loongarch64,
-        .m68k => .m68k,
-        .mips => .mips,
-        .mipsel => .mipsel,
-        .mips64 => .mips64,
-        .mips64el => .mips64el,
-        .msp430 => .msp430,
-        .powerpc => .ppc,
-        .powerpcle => .ppcle,
-        .powerpc64 => .ppc64,
-        .powerpc64le => .ppc64le,
-        .amdgcn => .amdgcn,
-        .riscv32 => .riscv32,
-        .riscv64 => .riscv64,
-        .sparc => .sparc,
-        .sparc64 => .sparcv9, // In LLVM, sparc64 == sparcv9.
-        .s390x => .systemz,
-        .thumb => .thumb,
-        .thumbeb => .thumbeb,
-        .x86 => .x86,
-        .x86_64 => .x86_64,
-        .xcore => .xcore,
-        .xtensa => .xtensa,
-        .nvptx => .nvptx,
-        .nvptx64 => .nvptx64,
-        .spirv => .spirv,
-        .spirv32 => .spirv32,
-        .spirv64 => .spirv64,
-        .kalimba => .kalimba,
-        .lanai => .lanai,
-        .wasm32 => .wasm32,
-        .wasm64 => .wasm64,
-        .ve => .ve,
-        .propeller1, .propeller2, .spu_2 => .UnknownArch,
-    };
 }
 
 pub fn supportsTailCall(target: std.Target) bool {
@@ -677,7 +581,7 @@ const DataLayoutBuilder = struct {
         switch (kind) {
             .integer => {
                 if (self.target.ptrBitWidth() <= 16 and size >= 128) return;
-                abi = @min(abi, Type.maxIntAlignment(self.target, true) * 8);
+                abi = @min(abi, Type.maxIntAlignment(self.target) * 8);
                 switch (self.target.cpu.arch) {
                     .aarch64,
                     .aarch64_be,
@@ -1152,12 +1056,13 @@ pub const Object = struct {
         time_report: bool,
         sanitize_thread: bool,
         fuzz: bool,
-        lto: bool,
+        lto: Compilation.Config.LtoMode,
     };
 
-    pub fn emit(o: *Object, options: EmitOptions) !void {
+    pub fn emit(o: *Object, options: EmitOptions) error{ LinkFailure, OutOfMemory }!void {
         const zcu = o.pt.zcu;
         const comp = zcu.comp;
+        const diags = &comp.link_diags;
 
         {
             try o.genErrorNameTable();
@@ -1319,27 +1224,30 @@ pub const Object = struct {
             o.builder.clearAndFree();
 
             if (options.pre_bc_path) |path| {
-                var file = try std.fs.cwd().createFile(path, .{});
+                var file = std.fs.cwd().createFile(path, .{}) catch |err|
+                    return diags.fail("failed to create '{s}': {s}", .{ path, @errorName(err) });
                 defer file.close();
 
                 const ptr: [*]const u8 = @ptrCast(bitcode.ptr);
-                try file.writeAll(ptr[0..(bitcode.len * 4)]);
+                file.writeAll(ptr[0..(bitcode.len * 4)]) catch |err|
+                    return diags.fail("failed to write to '{s}': {s}", .{ path, @errorName(err) });
             }
 
             if (options.asm_path == null and options.bin_path == null and
                 options.post_ir_path == null and options.post_bc_path == null) return;
 
             if (options.post_bc_path) |path| {
-                var file = try std.fs.cwd().createFileZ(path, .{});
+                var file = std.fs.cwd().createFileZ(path, .{}) catch |err|
+                    return diags.fail("failed to create '{s}': {s}", .{ path, @errorName(err) });
                 defer file.close();
 
                 const ptr: [*]const u8 = @ptrCast(bitcode.ptr);
-                try file.writeAll(ptr[0..(bitcode.len * 4)]);
+                file.writeAll(ptr[0..(bitcode.len * 4)]) catch |err|
+                    return diags.fail("failed to write to '{s}': {s}", .{ path, @errorName(err) });
             }
 
             if (!build_options.have_llvm or !comp.config.use_lib_llvm) {
-                log.err("emitting without libllvm not implemented", .{});
-                return error.FailedToEmit;
+                return diags.fail("emitting without libllvm not implemented", .{});
             }
 
             initializeLLVMTarget(comp.root_mod.resolved_target.result.cpu.arch);
@@ -1359,8 +1267,7 @@ pub const Object = struct {
 
             var module: *llvm.Module = undefined;
             if (context.parseBitcodeInContext2(bitcode_memory_buffer, &module).toBool() or context.getBrokenDebugInfo()) {
-                log.err("Failed to parse bitcode", .{});
-                return error.FailedToEmit;
+                return diags.fail("Failed to parse bitcode", .{});
             }
             break :emit .{ context, module };
         };
@@ -1370,12 +1277,7 @@ pub const Object = struct {
         var error_message: [*:0]const u8 = undefined;
         if (llvm.Target.getFromTriple(target_triple_sentinel, &target, &error_message).toBool()) {
             defer llvm.disposeMessage(error_message);
-
-            log.err("LLVM failed to parse '{s}': {s}", .{
-                target_triple_sentinel,
-                error_message,
-            });
-            @panic("Invalid LLVM triple");
+            return diags.fail("LLVM failed to parse '{s}': {s}", .{ target_triple_sentinel, error_message });
         }
 
         const optimize_mode = comp.root_mod.optimize_mode;
@@ -1434,7 +1336,7 @@ pub const Object = struct {
             .time_report = options.time_report,
             .tsan = options.sanitize_thread,
             .sancov = options.fuzz,
-            .lto = options.lto,
+            .lto = options.lto != .none,
             // https://github.com/ziglang/zig/issues/21215
             .allow_fast_isel = !comp.root_mod.resolved_target.result.cpu.arch.isMIPS(),
             .asm_filename = null,
@@ -1470,10 +1372,9 @@ pub const Object = struct {
         if (options.asm_path != null and options.bin_path != null) {
             if (target_machine.emitToFile(module, &error_message, &lowered_options)) {
                 defer llvm.disposeMessage(error_message);
-                log.err("LLVM failed to emit bin={s} ir={s}: {s}", .{
+                return diags.fail("LLVM failed to emit bin={s} ir={s}: {s}", .{
                     emit_bin_msg, post_llvm_ir_msg, error_message,
                 });
-                return error.FailedToEmit;
             }
             lowered_options.bin_filename = null;
             lowered_options.llvm_ir_filename = null;
@@ -1482,11 +1383,9 @@ pub const Object = struct {
         lowered_options.asm_filename = options.asm_path;
         if (target_machine.emitToFile(module, &error_message, &lowered_options)) {
             defer llvm.disposeMessage(error_message);
-            log.err("LLVM failed to emit asm={s} bin={s} ir={s} bc={s}: {s}", .{
-                emit_asm_msg,  emit_bin_msg, post_llvm_ir_msg, post_llvm_bc_msg,
-                error_message,
+            return diags.fail("LLVM failed to emit asm={s} bin={s} ir={s} bc={s}: {s}", .{
+                emit_asm_msg, emit_bin_msg, post_llvm_ir_msg, post_llvm_bc_msg, error_message,
             });
-            return error.FailedToEmit;
         }
     }
 
@@ -1572,7 +1471,7 @@ pub const Object = struct {
             } }, &o.builder);
         }
 
-        if (nav.status.resolved.@"linksection".toSlice(ip)) |section|
+        if (nav.status.fully_resolved.@"linksection".toSlice(ip)) |section|
             function_index.setSection(try o.builder.string(section), &o.builder);
 
         var deinit_wip = true;
@@ -1780,7 +1679,7 @@ pub const Object = struct {
             const file = try o.getDebugFile(file_scope);
 
             const line_number = zcu.navSrcLine(func.owner_nav) + 1;
-            const is_internal_linkage = ip.indexToKey(nav.status.resolved.val) != .@"extern";
+            const is_internal_linkage = ip.indexToKey(nav.status.fully_resolved.val) != .@"extern";
             const debug_decl_type = try o.lowerDebugType(fn_ty);
 
             const subprogram = try o.builder.debugSubprogram(
@@ -1911,7 +1810,7 @@ pub const Object = struct {
         self: *Object,
         pt: Zcu.PerThread,
         exported: Zcu.Exported,
-        export_indices: []const u32,
+        export_indices: []const Zcu.Export.Index,
     ) link.File.UpdateExportsError!void {
         assert(std.meta.eql(pt, self.pt));
         const zcu = pt.zcu;
@@ -1939,11 +1838,11 @@ pub const Object = struct {
         o: *Object,
         zcu: *Zcu,
         exported_value: InternPool.Index,
-        export_indices: []const u32,
+        export_indices: []const Zcu.Export.Index,
     ) link.File.UpdateExportsError!void {
         const gpa = zcu.gpa;
         const ip = &zcu.intern_pool;
-        const main_exp_name = try o.builder.strtabString(zcu.all_exports.items[export_indices[0]].opts.name.toSlice(ip));
+        const main_exp_name = try o.builder.strtabString(export_indices[0].ptr(zcu).opts.name.toSlice(ip));
         const global_index = i: {
             const gop = try o.uav_map.getOrPut(gpa, exported_value);
             if (gop.found_existing) {
@@ -1974,11 +1873,11 @@ pub const Object = struct {
         o: *Object,
         zcu: *Zcu,
         global_index: Builder.Global.Index,
-        export_indices: []const u32,
+        export_indices: []const Zcu.Export.Index,
     ) link.File.UpdateExportsError!void {
         const comp = zcu.comp;
         const ip = &zcu.intern_pool;
-        const first_export = zcu.all_exports.items[export_indices[0]];
+        const first_export = export_indices[0].ptr(zcu);
 
         // We will rename this global to have a name matching `first_export`.
         // Successive exports become aliases.
@@ -2035,7 +1934,7 @@ pub const Object = struct {
         // Until then we iterate over existing aliases and make them point
         // to the correct decl, or otherwise add a new alias. Old aliases are leaked.
         for (export_indices[1..]) |export_idx| {
-            const exp = zcu.all_exports.items[export_idx];
+            const exp = export_idx.ptr(zcu);
             const exp_name = try o.builder.strtabString(exp.opts.name.toSlice(ip));
             if (o.builder.getGlobal(exp_name)) |global| {
                 switch (global.ptrConst(&o.builder).kind) {
@@ -2061,11 +1960,6 @@ pub const Object = struct {
             );
             try alias_index.rename(exp_name, &o.builder);
         }
-    }
-
-    pub fn freeDecl(self: *Object, decl_index: InternPool.DeclIndex) void {
-        const global = self.decl_map.get(decl_index) orelse return;
-        global.delete(&self.builder);
     }
 
     fn getDebugFile(o: *Object, file_index: Zcu.File.Index) Allocator.Error!Builder.Metadata {
@@ -2215,7 +2109,7 @@ pub const Object = struct {
                     ptr_info.flags.is_allowzero or
                     ptr_info.flags.is_const or
                     ptr_info.flags.is_volatile or
-                    ptr_info.flags.size == .Many or ptr_info.flags.size == .C or
+                    ptr_info.flags.size == .many or ptr_info.flags.size == .c or
                     !Type.fromInterned(ptr_info.child).hasRuntimeBitsIgnoreComptime(zcu))
                 {
                     const bland_ptr_ty = try pt.ptrType(.{
@@ -2226,8 +2120,8 @@ pub const Object = struct {
                         .flags = .{
                             .alignment = ptr_info.flags.alignment,
                             .size = switch (ptr_info.flags.size) {
-                                .Many, .C, .One => .One,
-                                .Slice => .Slice,
+                                .many, .c, .one => .one,
+                                .slice => .slice,
                             },
                         },
                     });
@@ -3024,9 +2918,7 @@ pub const Object = struct {
         const gpa = o.gpa;
         const nav = ip.getNav(nav_index);
         const owner_mod = zcu.navFileScope(nav_index).mod;
-        const resolved = nav.status.resolved;
-        const val = Value.fromInterned(resolved.val);
-        const ty = val.typeOf(zcu);
+        const ty: Type = .fromInterned(nav.typeOf(ip));
         const gop = try o.nav_map.getOrPut(gpa, nav_index);
         if (gop.found_existing) return gop.value_ptr.ptr(&o.builder).kind.function;
 
@@ -3034,15 +2926,14 @@ pub const Object = struct {
         const target = owner_mod.resolved_target.result;
         const sret = firstParamSRet(fn_info, zcu, target);
 
-        const is_extern, const lib_name = switch (ip.indexToKey(val.toIntern())) {
-            .variable => |variable| .{ false, variable.lib_name },
-            .@"extern" => |@"extern"| .{ true, @"extern".lib_name },
-            else => .{ false, .none },
-        };
+        const is_extern, const lib_name = if (nav.getExtern(ip)) |@"extern"|
+            .{ true, @"extern".lib_name }
+        else
+            .{ false, .none };
         const function_index = try o.builder.addFunction(
             try o.lowerType(ty),
             try o.builder.strtabString((if (is_extern) nav.name else nav.fqn).toSlice(ip)),
-            toLlvmAddressSpace(resolved.@"addrspace", target),
+            toLlvmAddressSpace(nav.getAddrspace(), target),
         );
         gop.value_ptr.* = function_index.ptrConst(&o.builder).global;
 
@@ -3160,8 +3051,8 @@ pub const Object = struct {
             }
         }
 
-        if (resolved.alignment != .none)
-            function_index.setAlignment(resolved.alignment.toLlvm(), &o.builder);
+        if (nav.getAlignment() != .none)
+            function_index.setAlignment(nav.getAlignment().toLlvm(), &o.builder);
 
         // Function attributes that are independent of analysis results of the function body.
         try o.addCommonFnAttributes(
@@ -3237,8 +3128,11 @@ pub const Object = struct {
             } }, &o.builder);
         }
         try attributes.addFnAttr(.nounwind, &o.builder);
-        if (owner_mod.unwind_tables) {
-            try attributes.addFnAttr(.{ .uwtable = Builder.Attribute.UwTable.default }, &o.builder);
+        if (owner_mod.unwind_tables != .none) {
+            try attributes.addFnAttr(
+                .{ .uwtable = if (owner_mod.unwind_tables == .@"async") .@"async" else .sync },
+                &o.builder,
+            );
         }
         if (owner_mod.no_builtin) {
             // The intent here is for compiler-rt and libc functions to not generate
@@ -3343,17 +3237,21 @@ pub const Object = struct {
         const zcu = pt.zcu;
         const ip = &zcu.intern_pool;
         const nav = ip.getNav(nav_index);
-        const resolved = nav.status.resolved;
-        const is_extern, const is_threadlocal, const is_weak_linkage, const is_dll_import = switch (ip.indexToKey(resolved.val)) {
-            .variable => |variable| .{ false, variable.is_threadlocal, variable.is_weak_linkage, false },
-            .@"extern" => |@"extern"| .{ true, @"extern".is_threadlocal, @"extern".is_weak_linkage, @"extern".is_dll_import },
-            else => .{ false, false, false, false },
+        const is_extern, const is_threadlocal, const is_weak_linkage, const is_dll_import = switch (nav.status) {
+            .unresolved => unreachable,
+            .fully_resolved => |r| switch (ip.indexToKey(r.val)) {
+                .variable => |variable| .{ false, variable.is_threadlocal, variable.is_weak_linkage, false },
+                .@"extern" => |@"extern"| .{ true, @"extern".is_threadlocal, @"extern".is_weak_linkage, @"extern".is_dll_import },
+                else => .{ false, false, false, false },
+            },
+            // This means it's a source declaration which is not `extern`!
+            .type_resolved => |r| .{ false, r.is_threadlocal, false, false },
         };
 
         const variable_index = try o.builder.addVariable(
             try o.builder.strtabString((if (is_extern) nav.name else nav.fqn).toSlice(ip)),
             try o.lowerType(Type.fromInterned(nav.typeOf(ip))),
-            toLlvmGlobalAddressSpace(resolved.@"addrspace", zcu.getTarget()),
+            toLlvmGlobalAddressSpace(nav.getAddrspace(), zcu.getTarget()),
         );
         gop.value_ptr.* = variable_index.ptrConst(&o.builder).global;
 
@@ -3484,8 +3382,8 @@ pub const Object = struct {
                         toLlvmAddressSpace(ptr_type.flags.address_space, target),
                     );
                     break :type switch (ptr_type.flags.size) {
-                        .One, .Many, .C => ptr_ty,
-                        .Slice => try o.builder.structType(.normal, &.{
+                        .one, .many, .c => ptr_ty,
+                        .slice => try o.builder.structType(.normal, &.{
                             ptr_ty,
                             try o.lowerType(Type.usize),
                         }),
@@ -4622,20 +4520,10 @@ pub const Object = struct {
         const zcu = pt.zcu;
         const ip = &zcu.intern_pool;
 
-        // In the case of something like:
-        // fn foo() void {}
-        // const bar = foo;
-        // ... &bar;
-        // `bar` is just an alias and we actually want to lower a reference to `foo`.
-        const owner_nav_index = switch (ip.indexToKey(zcu.navValue(nav_index).toIntern())) {
-            .func => |func| func.owner_nav,
-            .@"extern" => |@"extern"| @"extern".owner_nav,
-            else => nav_index,
-        };
-        const owner_nav = ip.getNav(owner_nav_index);
+        const nav = ip.getNav(nav_index);
 
-        const nav_ty = Type.fromInterned(owner_nav.typeOf(ip));
-        const ptr_ty = try pt.navPtrType(owner_nav_index);
+        const nav_ty = Type.fromInterned(nav.typeOf(ip));
+        const ptr_ty = try pt.navPtrType(nav_index);
 
         const is_fn_body = nav_ty.zigTypeTag(zcu) == .@"fn";
         if ((!is_fn_body and !nav_ty.hasRuntimeBits(zcu)) or
@@ -4645,13 +4533,13 @@ pub const Object = struct {
         }
 
         const llvm_global = if (is_fn_body)
-            (try o.resolveLlvmFunction(owner_nav_index)).ptrConst(&o.builder).global
+            (try o.resolveLlvmFunction(nav_index)).ptrConst(&o.builder).global
         else
-            (try o.resolveGlobalNav(owner_nav_index)).ptrConst(&o.builder).global;
+            (try o.resolveGlobalNav(nav_index)).ptrConst(&o.builder).global;
 
         const llvm_val = try o.builder.convConst(
             llvm_global.toConst(),
-            try o.builder.ptrType(toLlvmAddressSpace(owner_nav.status.resolved.@"addrspace", zcu.getTarget())),
+            try o.builder.ptrType(toLlvmAddressSpace(nav.getAddrspace(), zcu.getTarget())),
         );
 
         return o.builder.convConst(llvm_val, try o.lowerType(ptr_ty));
@@ -4893,10 +4781,10 @@ pub const NavGen = struct {
         const ip = &zcu.intern_pool;
         const nav_index = ng.nav_index;
         const nav = ip.getNav(nav_index);
-        const resolved = nav.status.resolved;
+        const resolved = nav.status.fully_resolved;
 
         const is_extern, const lib_name, const is_threadlocal, const is_weak_linkage, const is_dll_import, const is_const, const init_val, const owner_nav = switch (ip.indexToKey(resolved.val)) {
-            .variable => |variable| .{ false, variable.lib_name, variable.is_threadlocal, variable.is_weak_linkage, false, false, variable.init, variable.owner_nav },
+            .variable => |variable| .{ false, .none, variable.is_threadlocal, variable.is_weak_linkage, false, false, variable.init, variable.owner_nav },
             .@"extern" => |@"extern"| .{ true, @"extern".lib_name, @"extern".is_threadlocal, @"extern".is_weak_linkage, @"extern".is_dll_import, @"extern".is_const, .none, @"extern".owner_nav },
             else => .{ false, .none, false, false, false, true, resolved.val, nav_index },
         };
@@ -5391,6 +5279,7 @@ pub const FuncGen = struct {
                 .inferred_alloc, .inferred_alloc_comptime => unreachable,
 
                 .dbg_stmt => try self.airDbgStmt(inst),
+                .dbg_empty_stmt => try self.airDbgEmptyStmt(inst),
                 .dbg_var_ptr => try self.airDbgVarPtr(inst),
                 .dbg_var_val => try self.airDbgVarVal(inst, false),
                 .dbg_arg_inline => try self.airDbgVarVal(inst, true),
@@ -5855,10 +5744,12 @@ pub const FuncGen = struct {
         const o = fg.ng.object;
         const zcu = o.pt.zcu;
         const ip = &zcu.intern_pool;
-        const msg_nav_index = zcu.panic_messages[@intFromEnum(panic_id)].unwrap().?;
-        const msg_nav = ip.getNav(msg_nav_index);
-        const msg_len = Type.fromInterned(msg_nav.typeOf(ip)).childType(zcu).arrayLen(zcu);
-        const msg_ptr = try o.lowerValue(msg_nav.status.resolved.val);
+        const msg_len: u64, const msg_ptr: Builder.Constant = msg: {
+            const str_val = zcu.builtin_decl_values.get(panic_id.toBuiltin());
+            assert(str_val != .none);
+            const slice = ip.indexToKey(str_val).slice;
+            break :msg .{ Value.fromInterned(slice.len).toUnsignedInt(zcu), try o.lowerValue(slice.ptr) };
+        };
         const null_opt_addr_global = try fg.resolveNullOptUsize();
         const target = zcu.getTarget();
         const llvm_usize = try o.lowerType(Type.usize);
@@ -5869,7 +5760,7 @@ pub const FuncGen = struct {
         //   ptr null,                                               ; stack trace
         //   ptr @2,                                                 ; addr (null ?usize)
         // )
-        const panic_func = zcu.funcInfo(zcu.panic_func_index);
+        const panic_func = zcu.funcInfo(zcu.builtin_decl_values.get(.@"Panic.call"));
         const panic_nav = ip.getNav(panic_func.owner_nav);
         const fn_info = zcu.typeToFunc(Type.fromInterned(panic_nav.typeOf(ip))).?;
         const panic_global = try o.resolveLlvmFunction(panic_func.owner_nav);
@@ -7097,7 +6988,7 @@ pub const FuncGen = struct {
         const zcu = pt.zcu;
         const llvm_usize = try o.lowerType(Type.usize);
         switch (ty.ptrSize(zcu)) {
-            .Slice => {
+            .slice => {
                 const len = try fg.wip.extractValue(ptr, &.{1}, "");
                 const elem_ty = ty.childType(zcu);
                 const abi_size = elem_ty.abiSize(zcu);
@@ -7105,13 +6996,13 @@ pub const FuncGen = struct {
                 const abi_size_llvm_val = try o.builder.intValue(llvm_usize, abi_size);
                 return fg.wip.bin(.@"mul nuw", len, abi_size_llvm_val, "");
             },
-            .One => {
+            .one => {
                 const array_ty = ty.childType(zcu);
                 const elem_ty = array_ty.childType(zcu);
                 const abi_size = elem_ty.abiSize(zcu);
                 return o.builder.intValue(llvm_usize, array_ty.arrayLen(zcu) * abi_size);
             },
-            .Many, .C => unreachable,
+            .many, .c => unreachable,
         }
     }
 
@@ -7430,6 +7321,12 @@ pub const FuncGen = struct {
             },
         };
 
+        return .none;
+    }
+
+    fn airDbgEmptyStmt(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
+        _ = self;
+        _ = inst;
         return .none;
     }
 
@@ -8773,11 +8670,11 @@ pub const FuncGen = struct {
         const llvm_elem_ty = try o.lowerPtrElemTy(ptr_ty.childType(zcu));
         switch (ptr_ty.ptrSize(zcu)) {
             // It's a pointer to an array, so according to LLVM we need an extra GEP index.
-            .One => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{
+            .one => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{
                 try o.builder.intValue(try o.lowerType(Type.usize), 0), offset,
             }, ""),
-            .C, .Many => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{offset}, ""),
-            .Slice => {
+            .c, .many => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{offset}, ""),
+            .slice => {
                 const base = try self.wip.extractValue(ptr, &.{0}, "");
                 return self.wip.gep(.inbounds, llvm_elem_ty, base, &.{offset}, "");
             },
@@ -8796,11 +8693,11 @@ pub const FuncGen = struct {
         const llvm_elem_ty = try o.lowerPtrElemTy(ptr_ty.childType(zcu));
         switch (ptr_ty.ptrSize(zcu)) {
             // It's a pointer to an array, so according to LLVM we need an extra GEP index.
-            .One => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{
+            .one => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{
                 try o.builder.intValue(try o.lowerType(Type.usize), 0), negative_offset,
             }, ""),
-            .C, .Many => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{negative_offset}, ""),
-            .Slice => {
+            .c, .many => return self.wip.gep(.inbounds, llvm_elem_ty, ptr, &.{negative_offset}, ""),
+            .slice => {
                 const base = try self.wip.extractValue(ptr, &.{0}, "");
                 return self.wip.gep(.inbounds, llvm_elem_ty, base, &.{negative_offset}, "");
             },
@@ -10137,9 +10034,9 @@ pub const FuncGen = struct {
 
         const llvm_usize_ty = try o.lowerType(Type.usize);
         const len = switch (ptr_ty.ptrSize(zcu)) {
-            .Slice => try self.wip.extractValue(dest_slice, &.{1}, ""),
-            .One => try o.builder.intValue(llvm_usize_ty, ptr_ty.childType(zcu).arrayLen(zcu)),
-            .Many, .C => unreachable,
+            .slice => try self.wip.extractValue(dest_slice, &.{1}, ""),
+            .one => try o.builder.intValue(llvm_usize_ty, ptr_ty.childType(zcu).arrayLen(zcu)),
+            .many, .c => unreachable,
         };
         const elem_llvm_ty = try o.lowerType(elem_ty);
         const end_ptr = try self.wip.gep(.inbounds, elem_llvm_ty, dest_ptr, &.{len}, "");

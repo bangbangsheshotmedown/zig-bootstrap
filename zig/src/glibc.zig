@@ -188,7 +188,7 @@ pub fn buildCrtFile(comp: *Compilation, crt_file: CrtFile, prog_node: std.Progre
     const arena = arena_allocator.allocator();
 
     const target = comp.root_mod.resolved_target.result;
-    const target_ver = target.os.version_range.linux.glibc;
+    const target_ver = target.os.versionRange().gnuLibCVersion().?;
     const nonshared_stat = target_ver.order(.{ .major = 2, .minor = 32, .patch = 0 }) != .gt;
     const start_old_init_fini = target_ver.order(.{ .major = 2, .minor = 33, .patch = 0 }) != .gt;
 
@@ -750,7 +750,7 @@ pub fn buildSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) !voi
     const arena = arena_allocator.allocator();
 
     const target = comp.getTarget();
-    const target_version = target.os.version_range.linux.glibc;
+    const target_version = target.os.versionRange().gnuLibCVersion().?;
 
     // Use the global cache directory.
     var cache: Cache = .{
@@ -1217,8 +1217,20 @@ pub fn buildSharedObjects(comp: *Compilation, prog_node: std.Progress.Node) !voi
     });
 }
 
+pub fn sharedObjectsCount(target: *const std.Target) u8 {
+    const target_version = target.os.versionRange().gnuLibCVersion() orelse return 0;
+    var count: u8 = 0;
+    for (libs) |lib| {
+        if (lib.removed_in) |rem_in| {
+            if (target_version.order(rem_in) != .lt) continue;
+        }
+        count += 1;
+    }
+    return count;
+}
+
 fn queueSharedObjects(comp: *Compilation, so_files: BuiltSharedObjects) void {
-    const target_version = comp.getTarget().os.version_range.linux.glibc;
+    const target_version = comp.getTarget().os.versionRange().gnuLibCVersion().?;
 
     assert(comp.glibc_so_files == null);
     comp.glibc_so_files = so_files;
