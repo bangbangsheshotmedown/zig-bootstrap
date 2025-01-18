@@ -1,0 +1,43 @@
+
+name: zag
+
+on:
+  release:
+    branches: [ "zag" ]
+  push:
+    branches: [ "zag" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        build_type: [Release]
+        c_compiler: [clang]
+        include:
+          - os: ubuntu-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Fix Yo Shit Motherfuckers
+      run: >
+        sudo apt update && sudo apt install -y build-essential g++ clang libc++-dev libc++abi-dev cmake ninja-build 
+
+    - name: Build
+      run: >
+        CMAKE_GENERATOR=Ninja ./build x86_64-linux-gnu baseline
+
+    - name: Zip artifact for deployment
+      run: zip zag.zip ./out/host/ -r
+
+    - name: Zip & Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: zag-release
+        path: out/zig-x86_64-linux-gnu-baseline/
+        compression-level: 6
