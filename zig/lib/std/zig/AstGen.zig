@@ -3147,7 +3147,7 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
             .local_val => {
                 const s = scope.cast(Scope.LocalVal).?;
                 if (s.used == 0 and s.discarded == 0) {
-                    try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
+                    // try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
                 } else if (s.used != 0 and s.discarded != 0) {
                     try astgen.appendErrorTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
                         try gz.astgen.errNoteTok(s.used, "used here", .{}),
@@ -3158,7 +3158,7 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
             .local_ptr => {
                 const s = scope.cast(Scope.LocalPtr).?;
                 if (s.used == 0 and s.discarded == 0) {
-                    try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
+                    // try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
                 } else {
                     if (s.used != 0 and s.discarded != 0) {
                         try astgen.appendErrorTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
@@ -3166,9 +3166,9 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
                         });
                     }
                     if (s.id_cat == .@"local variable" and !s.used_as_lvalue) {
-                        try astgen.appendErrorTokNotes(s.token_src, "local variable is never mutated", .{}, &.{
-                            try astgen.errNoteTok(s.token_src, "consider using 'const'", .{}),
-                        });
+                        // try astgen.appendErrorTokNotes(s.token_src, "local variable is never mutated", .{}, &.{
+                        //     try astgen.errNoteTok(s.token_src, "consider using 'const'", .{}),
+                        // });
                     }
                 }
 
