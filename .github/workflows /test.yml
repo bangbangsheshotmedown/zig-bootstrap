@@ -2,10 +2,10 @@
 name: zag
 
 on:
-  release:
-    branches: [ "zag" ]
   push:
     branches: [ "zag" ]
+  release:
+    types: [published]
 
 jobs:
   build:
